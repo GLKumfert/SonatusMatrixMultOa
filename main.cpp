@@ -37,35 +37,34 @@ int calc_matrix_mult_transposed(const std::vector<std::vector<int>>& A, const st
   return sum;
 }
 
-// //for pthread test
-// class Task {
-//     int id;
-//     int ntasks;
-//     int x; // ans to calculate
-//     int y;
-//     std::vector<std::vector<int>>* C;
-//     std::vector<std::vector<int>>* A;
-//     std::vector<std::vector<int>>* B;
-//   public:
-//     static void* runner(void* arg) {
-//         reinterpret_cast<Task*>(arg)->execute();
-//         return nullptr;
-//     }
+//for pthread test
+class Task {
+    int id;
+    int ntasks;
+    int x; // ans to calculate
+    int y;
+    std::vector<std::vector<int>>* C;
+    std::vector<std::vector<int>>* A;
+    std::vector<std::vector<int>>* B;
+  public:
+    static void* runner(void* arg) {
+        reinterpret_cast<Task*>(arg)->execute();
+        return nullptr;
+    }
 
-//     Task(int id, int ntasks, std::vector<std::vector<int>>* C, std::vector<std::vector<int>>* A, std::vector<std::vector<int>>* B, int x, int y)
-//         : id(id), ntasks(ntasks), C(C), A(A), B(B), x(x), y(y) {}
+    Task(int id, int ntasks, std::vector<std::vector<int>>* C, std::vector<std::vector<int>>* A, std::vector<std::vector<int>>* B, int x, int y)
+        : id(id), ntasks(ntasks), C(C), A(A), B(B), x(x), y(y) {}
 
-//     void execute() {
-//         auto& matrixA = *A;
-//         auto& matrixB = *B;
-//         auto& matrixC = *C;
-//         matrixC[x][y] = 0;
-//         for (int k = 0; k < matrixA[0].size(); ++k) {
-//           matrixC[x][y] += matrixA[x][k] * matrixB[k][y];
-//         }
-//     }
-
-// };
+    void execute() {
+        auto& matrixA = *A;
+        auto& matrixB = *B;
+        auto& matrixC = *C;
+        matrixC[x][y] = 0;
+        for (int k = 0; k < matrixA[0].size(); ++k) {
+          matrixC[x][y] += matrixA[x][k] * matrixB[y][k];
+        }
+    }
+};
 int main() {
     int p, q, r;
     std::cout << "Enter dimensions of matrix A (p x q), and B(q x r) as \"p q r \" (p,q,r < 100): ";
@@ -142,6 +141,43 @@ int main() {
       }
     }
 
+    //test pthreads
+    std::vector<Task> tasks;
+    std::vector<std::vector<int>> C_pthreads(p, std::vector<int>(r, 0));
+    std::vector<pthread_t> p_threads(p * r);
+    // pthread_barrier_t barrier;
+    // pthread_barrier_init(&barrier, NULL, p * r);
+    high_resolution_clock::time_point begin_pthreads = high_resolution_clock::now();
+    //task assignment
+    for (int i = 0; i < p; ++i) {
+        for (int j = 0; j < r; ++j) {
+            tasks.emplace_back(i * r + j, p * r, &C_pthreads, &A, &B_transposed, i, j);
+        }
+    }
+    for(int i = 0; i < tasks.size(); ++i) {
+        pthread_t thread;
+        int status = ::pthread_create(&p_threads[i], nullptr, Task::runner, &tasks[i]);
+        if (status != 0) {
+            ::perror("thread create");
+            return 1;
+        }
+    }
+    // wait for pthread finish
+    for(int i = 0; i < tasks.size(); ++i) {
+        pthread_join(p_threads[i], nullptr);
+    }
+    // end timing
+    auto time_span_pthreads = duration_cast<duration<double>>(high_resolution_clock::now() - begin_pthreads);
+    //check for errors
+    for(int i = 0; i < p; ++i) {
+      for(int j = 0; j < r; ++j) {
+        if(C[i][j] != C_pthreads[i][j]) {
+          std::cout << "Error in pthread matrix multiplication at C[" << i << "][" << j << "]" << std::endl;
+          return 1;
+        }
+      }
+    }
+
     // output matrices
     std::cout << "Matrix A:" << std::endl;
     for (const auto& row : A) {
@@ -178,7 +214,9 @@ int main() {
     std::cout << "Time taken for matrix multiplication (only threads): " << time_span.count() << " seconds" << std::endl;
     std::cout << "Time taken for matrix transpose: " << time_span_transpose.count() << " seconds" << std::endl;
     std::cout << "Time taken for matrix multiplication using transposed B: " << time_span_mat_transpose.count() << " seconds" << std::endl;
-    std::cout << "Speed up: " << time_span.count() - time_span_transpose.count() - time_span_mat_transpose.count()<< " seconds, or " <<time_span.count()/time_span_mat_transpose.count()*100 << "%" << std::endl;
+    std::cout << "Speed up: " << time_span.count() - time_span_transpose.count() - time_span_mat_transpose.count()<< " seconds, or " <<time_span.count()/time_span_mat_transpose.count()*100 << "%" << std::endl << std::endl;
+    std::cout << "Time taken for pthreads: " << time_span_pthreads.count() << " seconds" << std::endl;
+    std::cout << "Speed up(compared to transpose cause i transpoed the pthread): " << time_span_mat_transpose.count() - time_span_pthreads.count() << " seconds, or " <<time_span_mat_transpose.count()/time_span_pthreads.count()*100 << "%" << std::endl;
 
     return 0;
 }
