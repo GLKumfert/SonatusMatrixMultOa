@@ -15,6 +15,7 @@ The program should print the input matrices and the result matrix in a readable 
 #include <thread>
 #include <chrono>
 #include <pthread.h>
+#include <numeric>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration;
@@ -66,13 +67,28 @@ class Task {
     }
 };
 int main() {
-    int p, q, r;
-    std::cout << "Enter dimensions of matrix A (p x q), and B(q x r) as \"p q r \" (p,q,r < 100): ";
-    std::cin >> p >> q >> r;
-    std::vector<std::vector<int>> A(p, std::vector<int>(q));
-    std::vector<std::vector<int>> B(q, std::vector<int>(r));
+  int p, q, r,times;
+  std::cout << "Enter dimensions of matrix A (p x q), and B(q x r) as \"p q r \" (p,q,r < 100): ";
+  std::cin >> p >> q >> r;
+  std::cout <<"How many times to run (to test avg times), only \'1\' for matrix output: ";
+  std::cin >> times;
+  if (p > 100 || q > 100 || r > 100) {
+      std::cerr << "Dimensions should be less than 100." << std::endl;
+      return 1;
+  }
+  if (times < 1) {
+      std::cerr << "Times should be greater than 0." << std::endl;
+      return 1;
+  }
+  srand(time(0));
+  std::vector<double>time_spans_mat(times);
+  std::vector<double>time_spans_mat_transpose(times);
+  std::vector<double>time_spans_pthreads(times);
+  std::vector<std::vector<int>> A(p, std::vector<int>(q));
+  std::vector<std::vector<int>> B(q, std::vector<int>(r));
+  std::vector<std::vector<int>> C(p, std::vector<int>(r, 0));
+  for(int i = 0; i < times; ++i) {
     //random init of matrix
-    srand(time(0));
     for (int i = 0; i < p; ++i) {
         for (int j = 0; j < q; ++j) {
             A[i][j] = rand() % 10; // random ints from 0 to 9
@@ -98,7 +114,7 @@ int main() {
 
     std::vector<std::thread> threads;
     // --- time without transposing B
-    std::vector<std::vector<int>> C(p, std::vector<int>(r, 0));
+    // std::vector<std::vector<int>> C(p, std::vector<int>(r, 0));
     // start timing 
     high_resolution_clock::time_point begin = high_resolution_clock::now();
 
@@ -140,7 +156,6 @@ int main() {
         }
       }
     }
-
     //test pthreads
     std::vector<Task> tasks;
     std::vector<std::vector<int>> C_pthreads(p, std::vector<int>(r, 0));
@@ -177,7 +192,12 @@ int main() {
         }
       }
     }
-
+    //store times
+    time_spans_mat[i] = time_span.count();
+    time_spans_mat_transpose[i] = time_span_mat_transpose.count();
+    time_spans_pthreads[i] = time_span_pthreads.count();
+  }
+  if(times == 1) {
     // output matrices
     std::cout << "Matrix A:" << std::endl;
     for (const auto& row : A) {
@@ -209,14 +229,18 @@ int main() {
     //     }
     //     std::cout << std::endl;
     // }
-
+  }
+    //calculate average times
+    double avg_time_mat = std::accumulate(time_spans_mat.begin(), time_spans_mat.end(), 0.0) / times;
+    double avg_time_mat_transpose = std::accumulate(time_spans_mat_transpose.begin(), time_spans_mat_transpose.end(), 0.0) / times;
+    double avg_time_pthreads = std::accumulate(time_spans_pthreads.begin(), time_spans_pthreads.end(), 0.0) / times;
     //output timings
-    std::cout << "Time taken for matrix multiplication (only threads): " << time_span.count() << " seconds" << std::endl;
-    std::cout << "Time taken for matrix transpose: " << time_span_transpose.count() << " seconds" << std::endl;
-    std::cout << "Time taken for matrix multiplication using transposed B: " << time_span_mat_transpose.count() << " seconds" << std::endl;
-    std::cout << "Speed up: " << time_span.count() - time_span_transpose.count() - time_span_mat_transpose.count()<< " seconds, or " <<time_span.count()/time_span_mat_transpose.count()*100 << "%" << std::endl << std::endl;
-    std::cout << "Time taken for pthreads: " << time_span_pthreads.count() << " seconds" << std::endl;
-    std::cout << "Speed up(compared to transpose cause i transpoed the pthread): " << time_span_mat_transpose.count() - time_span_pthreads.count() << " seconds, or " <<time_span_mat_transpose.count()/time_span_pthreads.count()*100 << "%" << std::endl;
+    std::cout << "Time taken for matrix multiplication (only threads): " << avg_time_mat << " seconds" << std::endl;
+    // std::cout << "Time taken for matrix transpose: " << avg_time_mat_transpose.count() << " seconds" << std::endl;
+    std::cout << "Time taken for matrix multiplication using transposed B: " << avg_time_mat_transpose<< " seconds" << std::endl;
+    std::cout << "Speed up: " << avg_time_mat - avg_time_mat_transpose<< " seconds, or " <<avg_time_mat/avg_time_mat_transpose*100 << "%" << std::endl << std::endl;
+    std::cout << "Time taken for pthreads: " << avg_time_pthreads << " seconds" << std::endl;
+    std::cout << "Speed up(compared to transpose cause i transpoed the pthread): " << avg_time_mat_transpose - avg_time_pthreads << " seconds, or " <<avg_time_mat_transpose/avg_time_pthreads*100 << "%" << std::endl;
 
-    return 0;
+  return 0;
 }
